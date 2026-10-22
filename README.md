@@ -32,7 +32,8 @@ Prerequisites on the installing machine:
 ## Use
 
 1. Write `<cwd>/handoff.md` with the `write`/`edit` tool. It must contain a status line:
-   `- 상태: CONTINUE` or `- 상태: WAIT` (Korean token is the contract anchor).
+   `- status: CONTINUE` or `- status: WAIT` (English token is the contract anchor since v9; the old
+   Korean `- 상태:` line is rejected, and the refusal message prints the required form).
 2. Call the tool `active_handoff` (no parameters).
 3. The tool returns, the successor generation starts, this generation exits. Do not speak, do not
    call tools after the tool result.
@@ -45,7 +46,7 @@ Gate rules (all enforced in code, deterministic):
 | size | >= 200 bytes, <= 40000 bytes (refuses oversized notes with a compression instruction) |
 | freshness | last modified within 60 minutes |
 | self-write | last modified **after** this process loaded the extension (blocks "reading aloud" an inherited note) |
-| status line | `/^\s*-\s*상태:\s*(CONTINUE\|WAIT)\s*$/m` over the whole file |
+| status line | `/^\s*-\s*status:\s*(CONTINUE\|WAIT)\s*$/m` over the whole file |
 | once per generation | tool refuses a second call |
 
 Successor: `cmd.exe /c start "" cmd.exe /c pi.cmd --approve --name hyper-<digits> "Read <anchor> and

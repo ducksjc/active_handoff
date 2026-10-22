@@ -28,7 +28,7 @@
  * v4에서 고친 것 (용도: 긴 자율 수행 중의 자동 교대):
  *  (e) 첫 메시지를 얇은 디스패치로 축소. "wait for the user"는 자율 런에서 후속을 idle로 앉힌다
  *      (실측: 후속이 실제로 그렇게 앉았다). 노트가 지시 채널이므로 프레이밍을 여기서 하지 않는다.
- *  (f) 노트 상단에 '- 상태: CONTINUE|WAIT' 줄을 강제. 없으면 거절.
+ *  (f) 노트 상단에 '- status: CONTINUE|WAIT' 줄을 강제. 없으면 거절. (v9 에서 영어 앵커로 교체)
  *      첫 메시지가 "적힌대로 행동해"가 되는 순간, 다음 행동이 없는 노트는 후속을 멈추게 한다.
  *      LLM 판단 없이 정규식으로 결정적으로 검사한다.
  *  (g) 노트 장르를 '자서전'에서 '인수인계 노트'로 교체. 도구 설명도 같이.
@@ -56,6 +56,13 @@
  *      아무것도 등록하지 않는 편이 결정적이다(로그에 SKIP 한 줄만 남는다).
  *  (l) annotations. 이 툴은 세대를 종료시키고 창을 열므로 destructive. 권한 확장이 이 힌트를
  *      읽어 호출 확인을 결정할 수 있다(docs/extensions.md:167).
+ *
+ * v9에서 고친 것 (2026-10-22 user 지시: "LLM 과 상호작용하는 문자열은 전부 영어로"):
+ *  (m) LLM 이 런타임에 읽거나 손으로 써야 하는 문자열 전부 영어로 교체 — 도구 설명, 거절/성공
+ *      결과문, tool_call 차단 사유, 로그 줄, 툴 label. **계약 앵커도 `- 상태:` → `- status:` 로 하드 스위치**
+ *      (옛 노트의 `- 상태:` 줄은 거절된다. 거절 메시지가 요구 형식을 그대로 보여주므로 LLM 이 바로 고친다).
+ *      소스 주석과 README 는 원문 유지(사람이 코드 분석할 때 쓰는 지식).
+ *      후속 창 첫 메시지는 원래부터 ASCII 영어였다(명령줄 메타문자 금지 불변식은 그대로).
  */
 
 import { appendFileSync, existsSync, readFileSync, statSync } from "node:fs";
@@ -73,8 +80,8 @@ const MIN_BYTES = 200; // 빈 껍데기 자서전으로 세대 넘기는 것 방
 const MAX_BYTES = 40000; // (h) 비대 자서전 방지. 초과 시 압축 후 재작성만 통과.
 const MAX_AGE_MS = 60 * 60 * 1000; // 1시간 이상 오래된 파일로는 넘기지 않음
 
-/** (f) 후속이 무엇을 할지 결정할 수 있는 줄. 이 줄 없이는 교대하지 않는다. */
-const STATUS_RE = /^\s*-\s*상태:\s*(CONTINUE|WAIT)\s*$/m;
+/** (f) 후속이 무엇을 할지 결정할 수 있는 줄. 이 줄 없이는 교대하지 않는다. (v9: 앵커는 영어 `status`) */
+const STATUS_RE = /^\s*-\s*status:\s*(CONTINUE|WAIT)\s*$/m;
 
 /** (k) Windows 전용. 그 밖의 플랫폼에서는 이 확장이 아무것도 등록하지 않는다. */
 const IS_WINDOWS = process.platform === "win32";
@@ -134,7 +141,7 @@ export default function (pi: ExtensionAPI) {
 	// (k) win32 이외에서는 조차 등록하지 않는다. cmd.exe/start/pi.cmd 가 전부 없는 플랫폼에서
 	// 호출 가능 툴을 노출하면, 사용자는 실패 원인을 알 수 없는 메시지를 받게 된다.
 	if (!IS_WINDOWS) {
-		log(`SKIP | platform=${process.platform} | active_handoff는 Windows 전용 — 이 세션에 아무것도 등록하지 않음`);
+		log(`SKIP | platform=${process.platform} | active_handoff is Windows-only — nothing registered in this session`);
 		return;
 	}
 
@@ -142,7 +149,7 @@ export default function (pi: ExtensionAPI) {
 	// 도구를 실행시키지 않는다. 이미 확정된 교대를 이 세대가 뒤집지 못하게 한다.
 	pi.on("tool_call", async (event) => {
 		if (armed) {
-			return { block: true, reason: `active_handoff가 이미 발동됐다: '${event.toolName}' 실행 안 함 (이 세대는 종료 대기 중)` };
+			return { block: true, reason: `active_handoff already fired: '${event.toolName}' will not run (this generation is exiting)` };
 		}
 		return undefined;
 	});
@@ -157,53 +164,53 @@ export default function (pi: ExtensionAPI) {
 		name: "active_handoff",
 		label: "Active handoff",
 		description:
-			"다음 세대를 새 pi 창으로 깨우고 이 세대를 정상 종료한다. 인자 없음. " +
-			"호출 전에 인수인계 노트를 자기 작업 폴더(현재 cwd) 안의 handoff.md 에 먼저 쓴다. 다음 세션이 알아야 할 것만 적는다: 미완의 일, 전달하지 않으면 또 할 것 같은 함정, '- 상태: CONTINUE' 또는 '- 상태: WAIT' 줄. " +
-			`파일이 없거나 너무 짧거나 ${MAX_BYTES}바이트를 넘거나 너무 오래되거나 이번 프로세스 시작 전에 쓰인 것이거나 '- 상태: CONTINUE|WAIT' 줄이 없으면 거절된다.`,
+			"Wakes the next generation in a new pi window and terminates this one cleanly. No parameters. " +
+			"Before calling, write the handover note with the write/edit tool at handoff.md inside your own working folder (the current cwd). Write only what the next session needs to know: unfinished work, pitfalls you would otherwise repeat, and a '- status: CONTINUE' or '- status: WAIT' line. " +
+			`Refused if the file is missing, too short, over ${MAX_BYTES} bytes, too old, written before this process started, or has no '- status: CONTINUE|WAIT' line.`,
 		parameters: Type.Object({}),
 		// (l) 힌트는 저자의 선언이며 검증되지 않는다. 보수적으로 선언해 확인을 유도한다.
 		annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
 
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-			if (armed) return fail("거절: active_handoff는 1세대 1회. 이미 발동됐다.");
+			if (armed) return fail("refused: active_handoff runs once per generation — it already fired this generation.");
 
 			// ── 1) 전제 조건: 하네스가 강제한다 ─────────────────────────
 			// (i) 노트는 이 세대의 작업 폴더 안. ctx.cwd는 세션의 실제 작업 디렉터리.
 			const cwd = ctx.cwd;
 			const ANCHOR = anchorFor(cwd);
 			if (!existsSync(ANCHOR)) {
-				return fail(`거절: ${ANCHOR} 가 없습니다. write/edit 로 인수인계 노트를 먼저 쓰십시오.`);
+				return fail(`refused: ${ANCHOR} does not exist. Write the handover note first with write/edit.`);
 			}
 			const st = statSync(ANCHOR);
 			if (st.size < MIN_BYTES) {
-				return fail(`거절: ${ANCHOR} 가 ${st.size}바이트로 너무 짧습니다(최소 ${MIN_BYTES}).`);
+				return fail(`refused: ${ANCHOR} is ${st.size} bytes — too short (minimum ${MIN_BYTES}).`);
 			}
 			if (st.size > MAX_BYTES) {
 				return fail(
-					`거절: ${ANCHOR} 가 ${st.size}바이트로 상한(${MAX_BYTES}) 초과. 압축해서 다시 쓸 것. ` +
-						"수행 로그·되풀이 서술·앞 세대 내용을 버리고, 후속이 몰라서 다시 하게 될 것(미완·함정)과 상태 줄만 남긴다.",
+					`refused: ${ANCHOR} is ${st.size} bytes, over the ${MAX_BYTES} limit. Compress it and rewrite. ` +
+						"Drop run logs, repeated narration and previous-generation content; keep only what the successor would otherwise redo (unfinished work, pitfalls) plus the status line.",
 				);
 			}
 			const ageMin = Math.round((Date.now() - st.mtimeMs) / 60000);
 			if (Date.now() - st.mtimeMs > MAX_AGE_MS) {
-				return fail(`거절: ${ANCHOR} 의 마지막 수정이 ${ageMin}분 전입니다. 노트를 갱신하십시오.`);
+				return fail(`refused: ${ANCHOR} was last modified ${ageMin} minutes ago. Refresh the note.`);
 			}
 			// (c) self-write 강제: 이 프로세스가 확장 코드를 로드한 뒤 쓰인 파일만 인정.
 			if (st.mtimeMs < MODULE_LOADED_AT) {
 				return fail(
-					`거절: ${ANCHOR} 의 마지막 수정(${new Date(st.mtimeMs).toISOString()})이 이 프로세스가 확장을 로드한 시각(${new Date(MODULE_LOADED_AT).toISOString()})보다 앞섭니다. ` +
-						"앞 세대가 남긴 글입니다. 네 노트를 네 손으로 덮어쓴 뒤 부르십시오.",
+					`refused: ${ANCHOR} was last modified (${new Date(st.mtimeMs).toISOString()}), before this process loaded the extension (${new Date(MODULE_LOADED_AT).toISOString()}). ` +
+						"That is a previous generation's note. Overwrite it with your own note by hand, then call this tool.",
 				);
 			}
 
 			// (f) 다음 행동이 적혀 있지 않은 노트로는 교대하지 않는다.
 			// 상한이 40KB로 커졌으므로 상태 줄 검사 대상도 노트 전체로 확장한다.
-			// 앞 4000자로 잘려 있으면 맨 끝의 '- 상태:' 줄을 놓쳐 무조건 거절된다.
+			// 앞 4000자로 잘려 있으면 맨 끝의 '- status:' 줄을 놓쳐 무조건 거절된다.
 			const head = readFileSync(ANCHOR, "utf8");
 			if (!STATUS_RE.test(head)) {
 				return fail(
-					`거절: ${ANCHOR} 에 '- 상태: CONTINUE' 또는 '- 상태: WAIT' 줄이 없습니다. ` +
-						"후속이 무엇을 계속할지, 어디서 멈출지 결정할 수 없습니다.",
+					`refused: ${ANCHOR} has no '- status: CONTINUE' or '- status: WAIT' line. ` +
+						"The successor cannot decide what to continue and where to stop.",
 				);
 			}
 
@@ -212,8 +219,8 @@ export default function (pi: ExtensionAPI) {
 			const r = await spawnSuccessor(gen, ANCHOR, cwd);
 			if (r.code !== 0) {
 				return fail(
-					`거절: 후속 기동 실패 (exit ${r.code}).\n${(r.stderr || r.stdout || "").slice(0, 800)}\n` +
-						`이 세대는 살아 있습니다. 자서전은 보존되었습니다.`,
+					`refused: successor launch failed (exit ${r.code}).\n${(r.stderr || r.stdout || "").slice(0, 800)}\n` +
+						`This generation is still alive. The note is preserved.`,
 				);
 			}
 			log(`HANDOFF | gen=${gen} | cwd=${cwd} | anchor=${ANCHOR} | bytes=${st.size} | ageMin=${ageMin}`);
@@ -228,7 +235,7 @@ export default function (pi: ExtensionAPI) {
 			// 안전망 2(최후): graceful 경로가 막혔을 때의 하드 exit.
 			// 이건 터미널 복원(this.stop)을 건너뛰어 창을 raw mode로 남길 수 있으므로 마지막 수단만 쓴다.
 			setTimeout(() => {
-				log("FORCE_EXIT | graceful shutdown이 8초 안에 끝나지 않음");
+				log("FORCE_EXIT | graceful shutdown did not finish within 8s");
 				process.exit(0);
 			}, 8000).unref?.();
 
@@ -237,8 +244,8 @@ export default function (pi: ExtensionAPI) {
 					{
 						type: "text",
 						text:
-							`후속 세대 '${gen}' 을 새 창으로 기동했습니다(cwd=${cwd}). 노트: ${ANCHOR} (${st.size}바이트, ${ageMin}분 전 수정). ` +
-							`이 세대는 이 응답 후 종료됩니다. 더 말하지 말고 도구를 부르지 마십시오.`,
+							`Successor generation '${gen}' launched in a new window (cwd=${cwd}). Note: ${ANCHOR} (${st.size} bytes, modified ${ageMin} min ago). ` +
+							`This generation exits after this response. Do not say anything more and do not call any tool.`,
 					},
 				],
 				details: { ok: true, gen, anchor: ANCHOR, bytes: st.size, ageMin },
