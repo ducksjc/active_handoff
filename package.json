@@ -1,0 +1,15 @@
+{
+  "name": "pi-active-handoff",
+  "version": "0.1.0",
+  "description": "Deterministic session handoff for pi: successor generation in a new console window, gate-verified handover note.",
+  "license": "MIT",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./extensions/active_handoff.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "files": ["extensions"]
+}
