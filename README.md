@@ -21,7 +21,7 @@ only after project trust is granted.
 
 1. Write `<cwd>/handoff.md` with the `write`/`edit` tool. It must contain a status line:
    `- 상태: CONTINUE` or `- 상태: WAIT` (Korean token is the contract anchor).
-2. Call the tool (currently named `auto_handoff`, no parameters).
+2. Call the tool `active_handoff` (no parameters).
 3. The tool returns, the successor generation starts, this generation exits. Do not speak, do not
    call tools after the tool result.
 
@@ -39,7 +39,7 @@ Gate rules (all enforced in code, deterministic):
 Successor: `cmd.exe /c start "" cmd.exe /c pi.cmd --approve --name hyper-<digits> "Read <anchor> and
 do what it says..."` in the **same cwd**. The first message is hardcoded ASCII with no cmd
 metacharacters. `cmd /c` (not `/K`) so the shell dies with pi and no orphan prompt is left.
-Audit trail: `~/.pi/auto_handoff.log` (`HANDOFF`, `REJECT`, `FORCE_EXIT` lines).
+Audit trail: `~/.pi/active_handoff.log` (`HANDOFF`, `REJECT`, `FORCE_EXIT` lines).
 
 After the tool result the extension blocks every tool call, aborts the run at `message_end`, retries
 abort at 2 s, and hard-exits at 8 s as the last resort.

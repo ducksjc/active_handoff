@@ -1,9 +1,9 @@
 /**
- * auto_handoff — hyper_session 세대 전환 (v3 / 세대 3 개정)
+ * active_handoff — hyper_session 세대 전환 (v3 / 세대 3 개정)
  *
  * 사용법:
  *   1) 일반 write/edit 도구로 인수인계 노트를 <자기 작업 폴더>/handoff.md 에 먼저 쓴다.
- *   2) auto_handoff 를 인자 없이 부른다.
+ *   2) active_handoff 를 인자 없이 부른다.
  * 그 다음 확장이, 검증 → 새 pi 창 기동 → 자기 종료까지 결정적으로 처리한다.
  * LLM가 PID를 계산하거나 명령줄 인용부호를 다루지 않는다.
  *
@@ -19,7 +19,7 @@
  *  (d) 후속 창 자기 소멸: start는 .cmd를 새 콘솔 cmd.exe /K로 띄운다(실측: 후속 창 cmdline이
  *      "cmd.exe /K pi.cmd ..."). /K는 pi가 죽은 뒤에도 cmd가 남아 창이 세대마다 쌓인다.
  *      start가 실행할 프로그램을 cmd.exe /c로 감싸면 pi 종료 → cmd 종료 → 창 소멸.
- *      대신 부팅 실패 시 창이 즉시 사라지므로 흔적은 auto_handoff.log에 남긴다.
+ *      대신 부팅 실패 시 창이 즉시 사라지므로 흔적은 active_handoff.log에 남긴다.
  *      실측: pi의 execCommand를 하네스에서 직접 import해 argv 4종을 돌린 결과
  *      start+배치(/K), start+cmd.exe /c, start+cmd /c, start 없음 전부 exit 0으로 배치 실행에 성공.
  *      argv와 pi.exec는 원인이 아니었다(내 시뮬레이션 파일의 역슬래시 이스케이프가 깨져 있었음).
@@ -39,11 +39,11 @@
  *      도구 설명의 작성 지침도 최소로 축소: 다음 세션이 알아야 할 것(미완·함정)만.
  *
  * v6에서 고친 것:
- *  (i) 노트 위치를 ~/.pi/auto_handoff.md(전역 단일 파일)에서 <세션 cwd>/handoff.md(폴더별)로 이동.
+ *  (i) 노트 위치를 ~/.pi/auto_handoff.md(전역 단일 파일. v6 이전의 실존 파일명)에서 <세션 cwd>/handoff.md(폴더별)로 이동.
  *      전역 파일은 작업 폴더가 바뀌면 앞 작업의 노트가 새 작업의 노트로 오독된다.
  *      ANCHOR가 상수에서 함수(anchorFor(cwd))로 바뀌고, 후속 창도 같은 cwd에서 기동한다
  *      (pi.exec의 options.cwd — start는 부모 cwd를 상속하므로 --cwd 플래그 불필요).
- *      로그는 계속 ~/.pi/auto_handoff.log 한 곳에 모은다(세대 교대 감사 추적은 전역이 편하다).
+ *      로그는 계속 ~/.pi/active_handoff.log 한 곳에 모은다(세대 교대 감사 추적은 전역이 편하다).
  *
  * v7에서 고친 것:
  *  (j) MAX_BYTES 3600 → 40000. 노트가 길어질 작업을 인정하는 대신, (f)의 상태 줄 검사를
@@ -61,7 +61,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 function anchorFor(cwd: string): string {
 	return join(cwd, "handoff.md");
 }
-const LOG = join(homedir(), ".pi", "auto_handoff.log");
+const LOG = join(homedir(), ".pi", "active_handoff.log");
 const MIN_BYTES = 200; // 빈 껍데기 자서전으로 세대 넘기는 것 방지
 const MAX_BYTES = 40000; // (h) 비대 자서전 방지. 초과 시 압축 후 재작성만 통과.
 const MAX_AGE_MS = 60 * 60 * 1000; // 1시간 이상 오래된 파일로는 넘기지 않음
@@ -125,7 +125,7 @@ export default function (pi: ExtensionAPI) {
 	// 도구를 실행시키지 않는다. 이미 확정된 교대를 이 세대가 뒤집지 못하게 한다.
 	pi.on("tool_call", async (event) => {
 		if (armed) {
-			return { block: true, reason: `auto_handoff가 이미 발동됐다: '${event.toolName}' 실행 안 함 (이 세대는 종료 대기 중)` };
+			return { block: true, reason: `active_handoff가 이미 발동됐다: '${event.toolName}' 실행 안 함 (이 세대는 종료 대기 중)` };
 		}
 		return undefined;
 	});
@@ -137,8 +137,8 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerTool({
-		name: "auto_handoff",
-		label: "Auto handoff",
+		name: "active_handoff",
+		label: "Active handoff",
 		description:
 			"다음 세대를 새 pi 창으로 깨우고 이 세대를 정상 종료한다. 인자 없음. " +
 			"호출 전에 인수인계 노트를 자기 작업 폴더(현재 cwd) 안의 handoff.md 에 먼저 쓴다. 다음 세션이 알아야 할 것만 적는다: 미완의 일, 전달하지 않으면 또 할 것 같은 함정, '- 상태: CONTINUE' 또는 '- 상태: WAIT' 줄. " +
@@ -146,7 +146,7 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({}),
 
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-			if (armed) return fail("거절: auto_handoff는 1세대 1회. 이미 발동됐다.");
+			if (armed) return fail("거절: active_handoff는 1세대 1회. 이미 발동됐다.");
 
 			// ── 1) 전제 조건: 하네스가 강제한다 ─────────────────────────
 			// (i) 노트는 이 세대의 작업 폴더 안. ctx.cwd는 세션의 실제 작업 디렉터리.
