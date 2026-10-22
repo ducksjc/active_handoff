@@ -49,6 +49,13 @@
  *  (j) MAX_BYTES 3600 → 40000. 노트가 길어질 작업을 인정하는 대신, (f)의 상태 줄 검사를
  *      노트 앞 4000자에서 전체로 확장했다. 안 하면 맨 끝에 적힌 '- 상태:' 줄이 잘려서
  *      긴 노트가 무조건 거절된다(한글은 UTF-8 3바이트라 4000자 ≒ 12KB에 불과).
+ *
+ * v8에서 고친 것 (공개 배포: 남이 설치해도 깨지지 않게):
+ *  (k) 플랫폼 가드. 후속 기동이 cmd.exe + start + pi.cmd 이므로 POSIX에서는 성공할 수 없다.
+ *      win32 이외에서는 registerTool 자체를 하지 않는다. 실패할 툴을 모델 앞에 세우는 것보다
+ *      아무것도 등록하지 않는 편이 결정적이다(로그에 SKIP 한 줄만 남는다).
+ *  (l) annotations. 이 툴은 세대를 종료시키고 창을 열므로 destructive. 권한 확장이 이 힌트를
+ *      읽어 호출 확인을 결정할 수 있다(docs/extensions.md:167).
  */
 
 import { appendFileSync, existsSync, readFileSync, statSync } from "node:fs";
@@ -68,6 +75,9 @@ const MAX_AGE_MS = 60 * 60 * 1000; // 1시간 이상 오래된 파일로는 넘�
 
 /** (f) 후속이 무엇을 할지 결정할 수 있는 줄. 이 줄 없이는 교대하지 않는다. */
 const STATUS_RE = /^\s*-\s*상태:\s*(CONTINUE|WAIT)\s*$/m;
+
+/** (k) Windows 전용. 그 밖의 플랫폼에서는 이 확장이 아무것도 등록하지 않는다. */
+const IS_WINDOWS = process.platform === "win32";
 
 /** 이 확장 코드가 메모리에 올라간 시각. 자서전 self-write 판정의 기준선. */
 const MODULE_LOADED_AT = Date.now();
@@ -121,6 +131,13 @@ async function spawnSuccessor(gen: string, anchor: string, cwd: string) {
 export default function (pi: ExtensionAPI) {
 	pi_exec = pi.exec.bind(pi);
 
+	// (k) win32 이외에서는 조차 등록하지 않는다. cmd.exe/start/pi.cmd 가 전부 없는 플랫폼에서
+	// 호출 가능 툴을 노출하면, 사용자는 실패 원인을 알 수 없는 메시지를 받게 된다.
+	if (!IS_WINDOWS) {
+		log(`SKIP | platform=${process.platform} | active_handoff는 Windows 전용 — 이 세션에 아무것도 등록하지 않음`);
+		return;
+	}
+
 	// (a) handoff 이후의 모든 도구 호출을 차단한다. tool_call 핸들러의 block은 fail-safe로
 	// 도구를 실행시키지 않는다. 이미 확정된 교대를 이 세대가 뒤집지 못하게 한다.
 	pi.on("tool_call", async (event) => {
@@ -144,6 +161,8 @@ export default function (pi: ExtensionAPI) {
 			"호출 전에 인수인계 노트를 자기 작업 폴더(현재 cwd) 안의 handoff.md 에 먼저 쓴다. 다음 세션이 알아야 할 것만 적는다: 미완의 일, 전달하지 않으면 또 할 것 같은 함정, '- 상태: CONTINUE' 또는 '- 상태: WAIT' 줄. " +
 			`파일이 없거나 너무 짧거나 ${MAX_BYTES}바이트를 넘거나 너무 오래되거나 이번 프로세스 시작 전에 쓰인 것이거나 '- 상태: CONTINUE|WAIT' 줄이 없으면 거절된다.`,
 		parameters: Type.Object({}),
+		// (l) 힌트는 저자의 선언이며 검증되지 않는다. 보수적으로 선언해 확인을 유도한다.
+		annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
 
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			if (armed) return fail("거절: active_handoff는 1세대 1회. 이미 발동됐다.");

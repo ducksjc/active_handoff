@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "description": "Deterministic session handoff for pi: successor generation in a new console window, gate-verified handover note.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ducksjc/active_handoff.git"
+  },
+  "os": ["win32"],
   "keywords": ["pi-package"],
   "pi": {
     "extensions": ["./extensions/active_handoff.ts"]
