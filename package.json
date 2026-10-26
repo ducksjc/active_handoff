@@ -1,6 +1,6 @@
 {
   "name": "pi-active-handoff",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Deterministic session handoff for pi: successor generation in a new console window, gate-verified handover note.",
   "license": "MIT",
   "repository": {

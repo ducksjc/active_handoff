@@ -28,12 +28,12 @@ Package name is `pi-active-handoff`; the repository is `ducksjc/active_handoff`.
 ## Install
 
 ```bash
-pi install git:github.com/ducksjc/active_handoff@v0.1.0   # pinned tag
+pi install git:github.com/ducksjc/active_handoff@v0.2.0   # pinned tag
 pi install https://github.com/ducksjc/active_handoff      # same, URL form (tracks the default branch)
 pi install C:/path/to/active_handoff                      # local dir, loaded without copying
 pi -e ./extensions/active_handoff.ts                      # one-shot load, nothing written to settings
 pi list                     # configured packages
-pi remove git:github.com/ducksjc/active_handoff@v0.1.0
+pi remove git:github.com/ducksjc/active_handoff@v0.2.0
 pi update --extensions      # reconcile git checkouts (a pinned ref is not moved)
 ```
 
@@ -53,8 +53,10 @@ Prerequisites on the installing machine:
    `- status: CONTINUE` or `- status: WAIT` (English token is the contract anchor since v9; the old
    Korean `- 상태:` line is rejected, and the refusal message prints the required form).
 2. Call the tool `active_handoff` (no parameters).
-3. The tool returns, the successor generation starts, this generation exits. Do not speak, do not
-   call tools after the tool result.
+3. The first call that passes every gate returns the writing guide instead of handing off. Read it,
+   review the note, rewrite it if you think the guide is right.
+4. Call `active_handoff` again. The tool returns, the successor generation starts, this generation
+   exits. Do not speak, do not call tools after the tool result.
 
 Gate rules (all enforced in code, deterministic):
 
@@ -74,6 +76,36 @@ repeated, and it never blocks a handoff - calling again without touching the not
 so a generation at its context limit can never be locked out. `HANDOFF` lines carry `rewrote=yes|no`,
 `guideBytes` and `delta` so whether the guide changes the note is measured across generations rather
 than assumed.
+
+The guide, verbatim (1,208 bytes, once per generation):
+
+> There are things a handoff must not lose to summarization.
+>
+> 1. Write the final purpose that must not disappear even if the handoff repeats without end. The
+>    user's instructions belong to it, and the latest instruction among them. If an instruction is
+>    not long, write it without summarizing; if it is long, summarize it, and if it lives in an
+>    external md, state the path as well.
+> 2. Write the overall flow, not only the current step. A successor several relays away needs the
+>    same flow you hold.
+> 3. Record the core: decisions already made along the way, and new concepts this work created. These
+>    must stay undistorted across tens or hundreds of relays.
+> 4. Out of room? Write it into the md that owns it and leave the path here. A pointer is enough; an
+>    empty handoff is not. Instructions about finished work belong in the document that owns that
+>    work, with the path left here.
+> 5. Ask twice: what must the very next session know, and what must still be true after a hundred
+>    relays. Both belong somewhere - in this file or in a document you name by path.
+>
+> This guide is shown once per generation. Review the handoff.md you just wrote against the points
+> above, rewrite it if needed, then call active_handoff again.
+
+Why point 1 is shaped this way, measured: across 8 revisions of one project's `handoff.md` the number
+of surviving user-instruction quotes was always 1-2, at 26KB and at 9KB alike, after a day with tens
+of user interjections. Keeping only the newest is the model's default, not a bug of this extension.
+Demanding every instruction verbatim overshoots - some run 100 lines or arrive as md files that
+already exist in the repo, and they do not fit in 40000 bytes. So the rule keeps exactly one hard
+edge and leaves the rest to judgement: what is reversible (how much to write, in what form) is
+judgement, what is not (deleting it here, when only this generation still holds the transcript) is
+forbidden.
 
 Successor: `cmd.exe /c start "" cmd.exe /c pi.cmd --approve --name hyper-<digits> "Read <anchor> and
 do what it says..."` in the **same cwd**. The first message is hardcoded ASCII with no cmd

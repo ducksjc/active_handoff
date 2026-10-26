@@ -1,5 +1,5 @@
 /**
- * active_handoff — hyper_session 세대 전환 (v3 / 세대 3 개정)
+ * active_handoff — hyper_session 세대 전환 (v10 / 세대 10 개정)
  *
  * 사용법:
  *   1) 일반 write/edit 도구로 인수인계 노트를 <자기 작업 폴더>/handoff.md 에 먼저 쓴다.
