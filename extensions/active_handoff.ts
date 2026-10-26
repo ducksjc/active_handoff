@@ -1,11 +1,14 @@
 /**
- * active_handoff — hyper_session 세대 전환 (v10 / 세대 10 개정)
+ * active_handoff — hyper_session 세대 전환 (release 0.2.0)
  *
  * 사용법:
  *   1) 일반 write/edit 도구로 인수인계 노트를 <자기 작업 폴더>/handoff.md 에 먼저 쓴다.
  *   2) active_handoff 를 인자 없이 부른다.
  * 그 다음 확장이, 검증 → 새 pi 창 기동 → 자기 종료까지 결정적으로 처리한다.
  * LLM가 PID를 계산하거나 명령줄 인용부호를 다루지 않는다.
+ *
+ * 아래 "vN에서 고친 것" 은 이 파일의 **내부 개정 라벨(이력)** 이다. 버전 표기는 package.json 의
+ * 0.x.y 하나이며 릴리스 태그도 그 하나다(vN 은 릴리스 번호가 아니다). 이번 개정: v10 = 0.2.0.
  *
  * v3에서 고친 것 (모두 실측 근거):
  *  (a) handoff 이후 도구 호출 전면 차단.

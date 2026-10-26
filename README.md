@@ -7,6 +7,10 @@ and the current generation terminates. The gates are enforced by code, not by mo
 Package name is `pi-active-handoff`; the repository is `ducksjc/active_handoff`.
 **Windows only** — on any other platform the extension loads and registers nothing (see Limits).
 
+Versioning is one lineage: `0.x.y` in `package.json` and the git tag. The `vN에서 고친 것` blocks in
+`extensions/active_handoff.ts` are that file's **internal revision labels**, not release numbers
+(revision v10 shipped as 0.2.0).
+
 # 왜 만들었나?
 
 에이전트가 초장시간 자율 수행을 하는 도중에 무한 컴팩션되면서 발생하는 기억열화의 대안이다.
@@ -50,8 +54,9 @@ Prerequisites on the installing machine:
 ## Use
 
 1. Write `<cwd>/handoff.md` with the `write`/`edit` tool. It must contain a status line:
-   `- status: CONTINUE` or `- status: WAIT` (English token is the contract anchor since v9; the old
-   Korean `- 상태:` line is rejected, and the refusal message prints the required form).
+   `- status: CONTINUE` or `- status: WAIT` (the English token has been the contract anchor since
+   0.1.0; the old Korean `- 상태:` line is rejected, and the refusal message prints the required
+   form).
 2. Call the tool `active_handoff` (no parameters).
 3. The first call that passes every gate returns the writing guide instead of handing off. Read it,
    review the note, rewrite it if you think the guide is right.
@@ -68,7 +73,7 @@ Gate rules (all enforced in code, deterministic):
 | self-write | last modified **after** this process loaded the extension (blocks "reading aloud" an inherited note) |
 | status line | `/^\s*-\s*status:\s*(CONTINUE\|WAIT)\s*$/m` over the whole file |
 | once per generation | tool refuses a second call |
-| first pass in a generation | the call that passes **every** rule above is refused once with the writing guide (since v10) |
+| first pass in a generation | the call that passes **every** rule above is refused once with the writing guide (since 0.2.0) |
 
 The writing-guide checkpoint is not a defect gate: it fires only on a note that already passed all
 rules, so `REJECT` keeps meaning "the note is broken". It runs once per generation and is never
