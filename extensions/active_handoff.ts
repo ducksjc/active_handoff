@@ -63,6 +63,28 @@
  *      (옛 노트의 `- 상태:` 줄은 거절된다. 거절 메시지가 요구 형식을 그대로 보여주므로 LLM 이 바로 고친다).
  *      소스 주석과 README 는 원문 유지(사람이 코드 분석할 때 쓰는 지식).
  *      후속 창 첫 메시지는 원래부터 ASCII 영어였다(명령줄 메타문자 금지 불변식은 그대로).
+ *
+ * v10에서 고친 것 (2026-10-26 user 지시: "규칙도 다 지켰고 가이드도 1회 나간 적이 있다면 이번엔 진짜로 수행"):
+ *  (n) 최초 가이드 체크포인트. 강제 규칙(MIN/MAX/AGE/self-write/status)을 **모두 통과한 노트로**
+ *      이번 세대 최초로 호출한 경우에만, 가이드 문구로 한 번 거절한다. 그 다음 호출부터는 수행한다.
+ *      로그 태그는 REJECT가 아니라 GUIDE로 분리한다. REJECT는 계속 "진짜 결함" 신호로 남아야 한다
+ *      (5일 28판 로그에서 REJECT는 1건이었고 그 1건이 실제로 결함이었다. 섞으면 감사 추적이 죽는다).
+ *      가이드는 재작성을 강요하지 않는다: 노트를 안 고치고 재호출해도 수행한다. 컨텍스트 한계에
+ *      닿은 세대가 핸드오프를 못 하는 데드락이 원천 차단된다. 대신 HANDOFF 로그에 rewrote= 와
+ *      guideBytes= 를 찍어, 가이드가 실제로 노트를 고치게 만드는지 세대로 축적해 측정한다.
+ *      1번 조항의 근거와 형태는 실측으로 세 번 바뀌었다.
+ *      (1) "most recent instruction"로 시작했다: user는 텔레그램으로 중간에 관여하고 그 지시가 앞의
+ *          골을 대체한다(실측: #54의 골 "★27 실행 흐름의 단일 소유처 정리" → #55에서 user 인용문
+ *          "골 멈추고 일단락해봐..."로 대체).
+ *      (2) 그런데 최신만 남긴다(실측: innotant handoff.md 8판에서 user 지시 인용은 26KB 판이나 9KB
+ *          판이나 항상 1~2개. 하루 종일 텔레그램으로 수십 번 관여했는데 노트에는 늘 하나). 지시를
+ *          3번 하면 마지막 하나만 산다.
+ *      (3) 그래서 "장부(전부 원문)"로 넓히려 했더니 이번에는 과잉이었다 — user의 지시가 100줄이거나
+ *          이미 md 파일로 주어지는 판이 있어 40,000 bytes에 들어가지 않는다.
+ *      (4) 최종 형태는 user가 직접 쓴 초안: **최종 목적**을 축으로 세우고 지시를 그 아래 둔다. 지시가
+ *          짧으면 요약 없이, 길면 요약, 외부 md에 있으면 경로를 함께 적는다.
+ *      경직은 하나만 남긴다. 되돌릴 수 있는 것(무엇을 얼마나 적을까)은 판단에 맡기고, 되돌릴 수 없는
+ *          것(이 세대에서 흔적 없이 지우면 트랜스크립트가 사라져 후속이 영원히 회복 못 함)만 금지한다.
  */
 
 import { appendFileSync, existsSync, readFileSync, statSync } from "node:fs";
@@ -80,6 +102,22 @@ const MIN_BYTES = 200; // 빈 껍데기 자서전으로 세대 넘기는 것 방
 const MAX_BYTES = 40000; // (h) 비대 자서전 방지. 초과 시 압축 후 재작성만 통과.
 const MAX_AGE_MS = 60 * 60 * 1000; // 1시간 이상 오래된 파일로는 넘기지 않음
 
+/**
+ * (n) 세대 최초 통과 시 한 번 나가는 작성 가이드. LLM 이 런타임에 읽는 문자열이므로 영어(v9).
+ * 강제 규칙을 통과한 노트에만 나간다 — 결함 처리와 겹치지 않고, 이미 유효한 노트를 개선하는 데 쓴다.
+ * 재작성을 강요하지 않는다(데드락 금지). ASCII 만.
+ */
+const GUIDE =
+	"There are things a handoff must not lose to summarization.\n" +
+	"\n" +
+	"1. Write the final purpose that must not disappear even if the handoff repeats without end. The user's instructions belong to it, and the latest instruction among them. If an instruction is not long, write it without summarizing; if it is long, summarize it, and if it lives in an external md, state the path as well.\n" +
+	"2. Write the overall flow, not only the current step. A successor several relays away needs the same flow you hold.\n" +
+	"3. Record the core: decisions already made along the way, and new concepts this work created. These must stay undistorted across tens or hundreds of relays.\n" +
+	"4. Out of room? Write it into the md that owns it and leave the path here. A pointer is enough; an empty handoff is not. Instructions about finished work belong in the document that owns that work, with the path left here.\n" +
+	"5. Ask twice: what must the very next session know, and what must still be true after a hundred relays. Both belong somewhere - in this file or in a document you name by path.\n" +
+	"\n" +
+	"This guide is shown once per generation. Review the handoff.md you just wrote against the points above, rewrite it if needed, then call active_handoff again.";
+
 /** (f) 후속이 무엇을 할지 결정할 수 있는 줄. 이 줄 없이는 교대하지 않는다. (v9: 앵커는 영어 `status`) */
 const STATUS_RE = /^\s*-\s*status:\s*(CONTINUE|WAIT)\s*$/m;
 
@@ -94,6 +132,11 @@ let pi_exec: ExtensionAPI["exec"];
 /** handoff 발동 표시. 이 이후 이 세대는 도구도 발화도 하지 못한다. */
 let armed = false;
 
+/** (n) 가이드는 프로세스 = 세대당 1회. 이 변수가 그 1회를 결정한다. */
+let guideShown = false;
+let guideShownAt = 0;
+let guideBytes = 0;
+
 function log(line: string): void {
 	try {
 		appendFileSync(LOG, `${new Date().toISOString()} ${line}\n`);
@@ -104,6 +147,12 @@ function log(line: string): void {
 
 function fail(text: string) {
 	log(`REJECT | ${text.replace(/\s+/g, " ")}`);
+	return { content: [{ type: "text" as const, text }], details: { ok: false } };
+}
+
+/** (n) 가이드는 결함이 아니다. 태그를 분리해야 REJECT 가 결함 신호로 남는다. */
+function guide(anchor: string, bytes: number, text: string) {
+	log(`GUIDE | anchor=${anchor} | bytes=${bytes}`);
 	return { content: [{ type: "text" as const, text }], details: { ok: false } };
 }
 
@@ -166,7 +215,8 @@ export default function (pi: ExtensionAPI) {
 		description:
 			"Wakes the next generation in a new pi window and terminates this one cleanly. No parameters. " +
 			"Before calling, write the handover note with the write/edit tool at handoff.md inside your own working folder (the current cwd). Write only what the next session needs to know: unfinished work, pitfalls you would otherwise repeat, and a '- status: CONTINUE' or '- status: WAIT' line. " +
-			`Refused if the file is missing, too short, over ${MAX_BYTES} bytes, too old, written before this process started, or has no '- status: CONTINUE|WAIT' line.`,
+			`Refused if the file is missing, too short, over ${MAX_BYTES} bytes, too old, written before this process started, or has no '- status: CONTINUE|WAIT' line. ` +
+			"The first call in a generation that passes every rule is a checkpoint, not a handoff: it returns the writing guide once. Read it, review the note, call again.",
 		parameters: Type.Object({}),
 		// (l) 힌트는 저자의 선언이며 검증되지 않는다. 보수적으로 선언해 확인을 유도한다.
 		annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
@@ -214,6 +264,19 @@ export default function (pi: ExtensionAPI) {
 				);
 			}
 
+			// (n) 강제 규칙을 모두 통과한 노트로 이번 세대 최초 호출 → 가이드로 한 번 거절한다.
+			// 위치가 중요하다: 결함은 앞의 게이트에서 REJECT 로 잡히고, 가이드는 유효한 노트에만 돈다.
+			if (!guideShown) {
+				guideShown = true;
+				guideShownAt = Date.now();
+				guideBytes = st.size;
+				return guide(
+					ANCHOR,
+					st.size,
+					`checkpoint: every rule passed, so this call would hand off - but the writing guide has not run in this generation yet.\n\n${GUIDE}`,
+				);
+			}
+
 			// ── 2) 후속 기동: 셸을 거치지 않으니 인용부호 문제 없음 ─────
 			const gen = `hyper-${new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 12)}`;
 			const r = await spawnSuccessor(gen, ANCHOR, cwd);
@@ -223,7 +286,12 @@ export default function (pi: ExtensionAPI) {
 						`This generation is still alive. The note is preserved.`,
 				);
 			}
-			log(`HANDOFF | gen=${gen} | cwd=${cwd} | anchor=${ANCHOR} | bytes=${st.size} | ageMin=${ageMin}`);
+			// (n) rewrote=: 가이드가 나간 뒤 노트를 실제로 손봤는지. 이 플래그가 쌓이면
+			// "가이드가 행동을 바꾸는가"가 추측이 아니라 데이터가 된다.
+			const rewrote = st.mtimeMs > guideShownAt ? "yes" : "no";
+			log(
+				`HANDOFF | gen=${gen} | cwd=${cwd} | anchor=${ANCHOR} | bytes=${st.size} | ageMin=${ageMin} | rewrote=${rewrote} | guideBytes=${guideBytes} | delta=${st.size - guideBytes}`,
+			);
 
 			// ── 3) 자기 종료: 결과를 먼저 반환하고, 그 뒤 graceful shutdown ─
 			// armed는 결과 반환 이후에 켠다(그래야 이 도구의 toolResult는 정상 기록된다).

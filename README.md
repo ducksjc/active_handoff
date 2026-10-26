@@ -66,11 +66,19 @@ Gate rules (all enforced in code, deterministic):
 | self-write | last modified **after** this process loaded the extension (blocks "reading aloud" an inherited note) |
 | status line | `/^\s*-\s*status:\s*(CONTINUE\|WAIT)\s*$/m` over the whole file |
 | once per generation | tool refuses a second call |
+| first pass in a generation | the call that passes **every** rule above is refused once with the writing guide (since v10) |
+
+The writing-guide checkpoint is not a defect gate: it fires only on a note that already passed all
+rules, so `REJECT` keeps meaning "the note is broken". It runs once per generation and is never
+repeated, and it never blocks a handoff - calling again without touching the note still hands off,
+so a generation at its context limit can never be locked out. `HANDOFF` lines carry `rewrote=yes|no`,
+`guideBytes` and `delta` so whether the guide changes the note is measured across generations rather
+than assumed.
 
 Successor: `cmd.exe /c start "" cmd.exe /c pi.cmd --approve --name hyper-<digits> "Read <anchor> and
 do what it says..."` in the **same cwd**. The first message is hardcoded ASCII with no cmd
 metacharacters. `cmd /c` (not `/K`) so the shell dies with pi and no orphan prompt is left.
-Audit trail: `~/.pi/active_handoff.log` (`HANDOFF`, `REJECT`, `FORCE_EXIT` lines).
+Audit trail: `~/.pi/active_handoff.log` (`HANDOFF`, `REJECT`, `GUIDE`, `FORCE_EXIT` lines).
 
 After the tool result the extension blocks every tool call, aborts the run at `message_end`, retries
 abort at 2 s, and hard-exits at 8 s as the last resort.
