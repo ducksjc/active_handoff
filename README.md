@@ -7,9 +7,11 @@ and the current generation terminates. The gates are enforced by code, not by mo
 Package name is `pi-active-handoff`; the repository is `ducksjc/active_handoff`.
 **Windows only** — on any other platform the extension loads and registers nothing (see Limits).
 
-Versioning is one lineage: `0.x.y` in `package.json` and the git tag. The `vN에서 고친 것` blocks in
-`extensions/active_handoff.ts` are that file's **internal revision labels**, not release numbers
-(revision v10 shipped as 0.2.0).
+Versioning is one lineage: `0.x.y` in `package.json` and the git tag. The source file carries no
+changelog - its revision history lives in `git log` only. (Measured reason: the file used to keep a
+`vN에서 고친 것` block per revision plus a "세대 N 개정" marker in its header. That header marker sat
+at `v3` unchanged across 6 commits, from the 0.1.0 release through revision v10. A second copy of
+the history is not maintained, so it was deleted in 0.2.0.)
 
 # 왜 만들었나?
 
