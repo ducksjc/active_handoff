@@ -47,7 +47,8 @@ const GUIDE =
 	"3. Record the core: decisions already made along the way, and new concepts this work created. These must stay undistorted across tens or hundreds of relays.\n" +
 	"4. Out of room? Write it into the md that owns it and leave the path here. A pointer is enough; an empty handoff is not. Instructions about finished work belong in the document that owns that work, with the path left here.\n" +
 	"5. Ask twice: what must the very next session know, and what must still be true after a hundred relays. Both belong somewhere - in this file or in a document you name by path.\n" +
-	"\n" +
+	"6. If a goal tool is in use, state the goal's entire scope for the next session.\n" +
+	"\n" + // 0.2.1 에 추가됨. 골이 "현재 수행중인 부분적 미션"만 설명되어 있어서 다음 새션이 일부만 수행하고 대기하던 사태가 있었음.
 	"This guide is shown once per generation. Review the handoff.md you just wrote against the points above, rewrite it if needed, then call active_handoff again.";
 
 /** 후속이 무엇을 할지 결정할 수 있는 줄. 이 줄 없이는 교대하지 않는다. (v9: 앵커는 영어 `status`) */
