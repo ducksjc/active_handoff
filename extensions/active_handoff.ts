@@ -1,5 +1,5 @@
 /**
- * active_handoff — hyper_session 세대 전환 (release 0.2.0). Windows 전용.
+ * active_handoff — hyper_session 세대 전환 (release 0.2.1). Windows 전용.
  *
  * 사용법:
  *   1) 일반 write/edit 도구로 인수인계 노트를 <자기 작업 폴더>/handoff.md 에 먼저 쓴다.
@@ -89,7 +89,7 @@ function guide(anchor: string, bytes: number, text: string) {
 	return { content: [{ type: "text" as const, text }], details: { ok: false } };
 }
 
-async function spawnSuccessor(gen: string, anchor: string, cwd: string) {
+async function spawnSuccessor(gen: string, anchor: string, cwd: string, modelArg?: string) {
 	// 디스패치 한 줄. 권위·장르·행동은 전부 노트가 결정한다.
 	const firstMessage =
 		`Read ${anchor} and do what it says. It is a handover note from the session that just ended.`;
@@ -109,6 +109,10 @@ async function spawnSuccessor(gen: string, anchor: string, cwd: string) {
 			"/c",
 			"pi.cmd",
 			"--approve",
+			// 후속 창을 이 세션과 같은 프로바이더/모델로 고정한다 (0.2.1).
+			// modelArg는 호출자가 cmd 메타문자(% " ^ &) 없는 것만 넘긴다. 미전달 시
+			// 현행처럼 pi 기본값(settings.json)으로 뜬다.
+			...(modelArg ? ["--model", modelArg] : []),
 			"--name",
 			gen,
 			firstMessage,
@@ -211,8 +215,19 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			// ── 2) 후속 기동: 셸을 거치지 않으니 인용부호 문제 없음 ─────
+			// 현 세션의 모델 신원 상속 (0.2.1). ctx.model은 하네스가 주는 실제 선택값
+			// (process.env.PI_*는 bash도구에만 주입되므로 확장 프로세스에서는 쓰지 않는다).
+			// --model은 provider/id(:<thinking>) 패턴을 받는다고 cli.md가 명시(실측 확인).
+			const think = ctx.thinkingLevel ? `:${ctx.thinkingLevel}` : "";
+			const modelCandidate = ctx.model ? `${ctx.model.provider}/${ctx.model.id}${think}` : undefined;
+			// cmd.exe 메타문자(% " ^ &) 차단 불변식: 모델 이름이 정규식을 벗어나면
+			// 상속을 포기하고 기본값 경로(기존 동작)로 돌아간다.
+			const modelArg = modelCandidate && /^[A-Za-z0-9._\/-]+(:[A-Za-z]+)?$/.test(modelCandidate)
+				? modelCandidate
+				: undefined;
+			if (modelCandidate && !modelArg) log(`MODEL_SKIP | rejected chars in model name: ${JSON.stringify(modelCandidate)}`);
 			const gen = `hyper-${new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 12)}`;
-			const r = await spawnSuccessor(gen, ANCHOR, cwd);
+			const r = await spawnSuccessor(gen, ANCHOR, cwd, modelArg);
 			if (r.code !== 0) {
 				return fail(
 					`refused: successor launch failed (exit ${r.code}).\n${(r.stderr || r.stdout || "").slice(0, 800)}\n` +
@@ -223,7 +238,7 @@ export default function (pi: ExtensionAPI) {
 			// "가이드가 행동을 바꾸는가"가 추측이 아니라 데이터가 된다.
 			const rewrote = st.mtimeMs > guideShownAt ? "yes" : "no";
 			log(
-				`HANDOFF | gen=${gen} | cwd=${cwd} | anchor=${ANCHOR} | bytes=${st.size} | ageMin=${ageMin} | rewrote=${rewrote} | guideBytes=${guideBytes} | delta=${st.size - guideBytes}`,
+				`HANDOFF | gen=${gen} | cwd=${cwd} | anchor=${ANCHOR} | bytes=${st.size} | ageMin=${ageMin} | rewrote=${rewrote} | guideBytes=${guideBytes} | delta=${st.size - guideBytes} | model=${modelArg ?? "default"}`,
 			);
 
 			// ── 3) 자기 종료: 결과를 먼저 반환하고, 그 뒤 graceful shutdown ─
